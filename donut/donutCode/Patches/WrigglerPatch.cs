@@ -1,5 +1,6 @@
 
 using System;
+using System.Collections.Generic;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -7,21 +8,36 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 namespace donut.donutCode.Patches;
 
 /// <summary>
-/// 将 Wriggler 的原版 Spine 模型替换为静态 PNG。
+/// 为每只 Wriggler 分配不同的静态 PNG。
+/// 每组四只使用四张不同图片。
 /// </summary>
 [HarmonyPatch(
     typeof(NCreatureVisuals),
     nameof(NCreatureVisuals._Ready))]
 public static class WrigglerPatch
 {
-    private const string TexturePath =
-        "res://donut/Monsters/wriggler/replacement.png";
-
-    // WRIGGLER 独立的缩放和位置参数
-    private const float SkinScale = 0.13f;
+    private const float SkinScale = 0.10f;
 
     private static readonly Vector2 SkinOffset =
-        new Vector2(0, -60);
+        new Vector2(0, -70);
+
+    private static readonly string[] TexturePaths =
+    {
+        "res://donut/Monsters/wriggler/01.png",
+        "res://donut/Monsters/wriggler/02.png",
+        "res://donut/Monsters/wriggler/03.png",
+        "res://donut/Monsters/wriggler/04.png"
+    };
+
+    // 按场景保存分配状态
+    private sealed class AssignmentState
+    {
+        public int NextIndex;
+        public int[] Order = { 0, 1, 2, 3 };
+    }
+
+    private static readonly Dictionary<ulong, AssignmentState>
+        SceneAssignments = new();
 
     internal static bool IsTarget(NCreatureVisuals visuals)
     {
@@ -33,6 +49,37 @@ public static class WrigglerPatch
                    StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string GetTexturePath(NCreatureVisuals visuals)
+    {
+        // 使用当前场景根节点的实例 ID 区分战斗
+        ulong sceneId =
+            visuals.GetTree().CurrentScene?.GetInstanceId() ?? 0;
+
+        if (!SceneAssignments.TryGetValue(
+                sceneId, out var state))
+        {
+            state = new AssignmentState();
+
+            // Fisher-Yates 洗牌
+            for (int i = state.Order.Length - 1; i > 0; i--)
+            {
+                int j = Random.Shared.Next(i + 1);
+
+                (state.Order[i], state.Order[j]) =
+                    (state.Order[j], state.Order[i]);
+            }
+
+            SceneAssignments[sceneId] = state;
+        }
+
+        int index = state.Order[
+            state.NextIndex % state.Order.Length];
+
+        state.NextIndex++;
+
+        return TexturePaths[index];
+    }
+
     [HarmonyPostfix]
     public static void Postfix(NCreatureVisuals __instance)
     {
@@ -41,36 +88,24 @@ public static class WrigglerPatch
             if (!IsTarget(__instance))
                 return;
 
-            GD.Print("[donut] Found Wriggler visuals");
-
-            // 避免重复添加图片
             if (__instance.HasNode("DonutWrigglerReplacement"))
                 return;
 
+            string texturePath = GetTexturePath(__instance);
+
             Texture2D? texture =
-                ResourceLoader.Load<Texture2D>(TexturePath);
+                ResourceLoader.Load<Texture2D>(texturePath);
 
             if (texture == null)
             {
                 GD.PushError(
-                    $"[donut] Wriggler PNG load failed: {TexturePath}");
+                    $"[donut] Wriggler PNG load failed: {texturePath}");
                 return;
             }
 
-            GD.Print(
-                $"[donut] Wriggler PNG loaded: " +
-                $"{texture.GetWidth()}x{texture.GetHeight()}");
-
-            // 获取原版模型节点
             Node2D originalBody =
                 __instance.GetNode<Node2D>("%Visuals");
 
-            GD.Print(
-                $"[donut] Wriggler original body: " +
-                $"position={originalBody.Position}, " +
-                $"scale={originalBody.Scale}");
-
-            // 创建静态 PNG
             Sprite2D sprite = new Sprite2D
             {
                 Name = "DonutWrigglerReplacement",
@@ -82,16 +117,13 @@ public static class WrigglerPatch
                 Visible = true
             };
 
-            // 添加到怪物视觉节点
             __instance.AddChild(sprite);
 
-            // 隐藏原版 Spine 模型
+            // 隐藏原版 Spine
             originalBody.Visible = false;
 
             GD.Print(
-                $"[donut] Wriggler skin applied! " +
-                $"GlobalPosition={sprite.GlobalPosition}, " +
-                $"Visible={sprite.IsVisibleInTree()}");
+                $"[donut] Wriggler skin applied: {texturePath}");
         }
         catch (Exception ex)
         {
@@ -102,7 +134,7 @@ public static class WrigglerPatch
 }
 
 /// <summary>
-/// 防止游戏重新显示 Wriggler 原版模型。
+/// 防止原版 Wriggler 模型重新显示。
 /// </summary>
 [HarmonyPatch(
     typeof(NCreatureVisuals),
@@ -117,17 +149,14 @@ public static class WrigglerVisibilityPatch
             if (!WrigglerPatch.IsTarget(__instance))
                 return;
 
-            // 只有 PNG 已经创建时才隐藏原版模型
             if (!__instance.HasNode("DonutWrigglerReplacement"))
                 return;
 
             Node2D? originalBody =
                 __instance.GetNodeOrNull<Node2D>("%Visuals");
 
-            if (originalBody == null)
-                return;
-
-            originalBody.Visible = false;
+            if (originalBody != null)
+                originalBody.Visible = false;
         }
         catch (Exception ex)
         {
