@@ -139,7 +139,7 @@ public static class ExoskeletonPatch
 
                 Scale = Vector2.One * SkinScale,
 
-                ZIndex = 10,
+                ZIndex = 2,
 
                 Visible = true
             };

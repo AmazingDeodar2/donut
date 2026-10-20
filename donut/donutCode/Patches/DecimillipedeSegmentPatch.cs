@@ -219,7 +219,7 @@ public static class DecimillipedeSegmentPatch
 
                 Scale = Vector2.One * scale,
 
-                ZIndex = 10,
+                ZIndex = 2,
 
                 Visible = true
             };

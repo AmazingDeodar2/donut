@@ -80,7 +80,7 @@ public static class PhrogParasitePatch
                 Centered = true,
                 Position = originalBody.Position + new Vector2(0, -160),
                 Scale = new Vector2(0.40f, 0.40f),
-                ZIndex = 10,
+                ZIndex = 2,
                 Visible = true
             };
 

@@ -113,7 +113,7 @@ public static class WrigglerPatch
                 Centered = true,
                 Position = originalBody.Position + SkinOffset,
                 Scale = Vector2.One * SkinScale,
-                ZIndex = 10,
+                ZIndex = 2,
                 Visible = true
             };
 
